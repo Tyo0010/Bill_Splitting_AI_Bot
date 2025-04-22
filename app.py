@@ -1,129 +1,135 @@
 import os
 import logging
-from telegram import Update, MessageEntity, InputFile
+import google.generativeai as genai  # Updated import
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from PIL import Image
 
-# --- Assume OCR function and calculation logic exist elsewhere ---
-# from ocr_module import process_receipt_image
-# from calculation_module import calculate_split
 
-BOT_TOKEN = os.environ.get("7534072343:AAFjbPGd_3J7nMb4GG8rgdH8tby8d7XQYAo")
-BOT_USERNAME = "@Bill_Splitting_AI_Bot" # Replace with your actual bot username
+# Update constants
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+BOT_USERNAME = "@Bill_Splitting_AI_Bot"
+GEMINI_API_KEY = "AIzaSyB5dTq2XK6ut9O46_ez48qBcxJe54Rn-uI"
+
+# Initialize Gemini client with updated model
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')  # Updated model version
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.DEBUG  # Change to DEBUG level
 )
 logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sends a welcome message when the /start command is issued."""
-    await update.message.reply_text("Hi! Add me to a group, then tag me (@YourBotName) in a message with a receipt photo to split the bill.")
+    await update.message.reply_text(f"Hi! Add me to a group, then tag me ({BOT_USERNAME}) in a message with a receipt photo to split the bill.")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sends help text."""
     await update.message.reply_text(
         "How to use:\n"
         "1. Add me to your group.\n"
         "2. Take a clear photo of your receipt.\n"
-        "3. Send the photo to the group and **tag me in the caption** "
-        f"(like this: {BOT_USERNAME} dinner receipt, Alice, Bob, Charlie participated).\n"
-        "4. I will read the receipt and ask you to assign items to people.\n"
-        "\nCommands:\n"
+        "3. Send the photo to the group with caption in this format:\n\n"
+        f"{BOT_USERNAME}\n"
+        "Person1: item1, item2\n"
+        "Person2: item1, item2\n\n"
+        "Example:\n"
+        f"{BOT_USERNAME}\n"
+        "Alice: burger, coke\n"
+        "Bob: pasta, salad\n\n"
+        "Commands:\n"
         "/start - Welcome message\n"
         "/help - This message"
     )
 
 async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles messages with photos where the bot is mentioned."""
     message = update.message
-    photo = message.photo[-1] # Get the highest resolution photo
-    caption = message.caption or "" # Get the caption text
-
-    # --- Check if the bot was mentioned in the caption ---
-    # Method 1: Simple string check (less robust)
-    # mentioned = BOT_USERNAME in caption
-
-    # Method 2: Check message entities (more reliable)
-    mentioned = False
-    if message.caption_entities:
-        for entity in message.caption_entities:
-            if entity.type == MessageEntity.MENTION:
-                mention_text = caption[entity.offset : entity.offset + entity.length]
-                if mention_text == BOT_USERNAME:
-                    mentioned = True
-                    break
-            # You might also need to handle MessageEntity.TEXT_MENTION if users link the bot name
-
-    if not mentioned:
-        # If bot wasn't mentioned in the caption, ignore this photo message
-        # (Or you could check if the photo message is a reply to a message mentioning the bot)
-        logger.info("Received photo but bot wasn't mentioned in caption.")
-        return
-
-    logger.info(f"Received photo with mention from user {message.from_user.id} in chat {message.chat.id}")
-    await message.reply_text("Received receipt! Processing, please wait...")
-
+    photo = message.photo[-1]
+    caption = message.caption or ""
+    downloaded_path = None
+    
     try:
-        # 1. Download the photo
+        # Extract participants info from caption
+        participants_info = caption.replace(BOT_USERNAME, "").strip()
+        
+        if not participants_info:
+            await message.reply_text("Please provide participant information in the caption!")
+            return
+
+        # Download photo
         photo_file = await photo.get_file()
-        downloaded_path = await photo_file.download_to_drive() # Downloads to disk
-        logger.info(f"Photo downloaded to: {downloaded_path}")
+        downloaded_path = await photo_file.download_to_drive()
 
-        # 2. --- Call your OCR function ---
-        # extracted_items = process_receipt_image(downloaded_path) # Your function here!
-        # This function should return a list of items, prices, tax etc.
-        # For demonstration, let's mock the response:
-        extracted_items = [
-            {"item": "Burger", "price": 15.00},
-            {"item": "Fries", "price": 5.00},
-            {"item": "Tax", "price": 1.50}
-        ]
-        os.remove(downloaded_path) # Clean up the downloaded file
 
-        # --- Error handling for OCR needed here ---
-        if not extracted_items:
-             await message.reply_text("Sorry, I couldn't read the receipt clearly. Please try a clearer photo.")
-             return
-
-        # 3. --- Start the item assignment process ---
-        # This is where you'd likely enter a ConversationHandler (more complex state management)
-        # For now, just show extracted items:
-        response_text = "Okay, I found these items:\n"
-        for i, item_data in enumerate(extracted_items):
-            response_text += f"{i+1}. {item_data['item']} - ${item_data['price']:.2f}\n"
-        response_text += "\nNow, please tell me who had what..." # Start the next step here
-
-        await message.reply_text(response_text)
-        # --- TODO: Initiate ConversationHandler to ask user to assign items ---
+        # Process with AI
+        await message.reply_text("Processing receipt and calculating split...")
+        try:
+            split_result = await process_receipt_with_ai(downloaded_path, participants_info)
+            # Fix escape sequence
+            escaped_result = split_result.replace(".", r"\.")  # Fixed escape sequence
+            await message.reply_text(
+                f"🧮 *Bill Split Results:*\n```\n{escaped_result}\n```",
+                parse_mode='MarkdownV2'
+            )
+        except Exception as api_error:
+            logger.error(f"API Error: {str(api_error)}", exc_info=True)
+            await message.reply_text(
+                "Sorry, there was an error processing the receipt. Please try again."
+            )
 
     except Exception as e:
-        logger.error(f"Error processing receipt: {e}", exc_info=True)
-        await message.reply_text("Sorry, an error occurred while processing the receipt.")
-        # Clean up downloaded file in case of error
-        if 'downloaded_path' in locals() and os.path.exists(downloaded_path):
-             os.remove(downloaded_path)
+        logger.error(f"Error in handle_receipt: {str(e)}", exc_info=True)
+        await message.reply_text(
+            "Sorry, an error occurred. Please make sure:\n"
+            "1. The image is clear and readable\n"
+            "2. The caption format is correct\n"
+            "3. Try again or contact support if the issue persists"
+        )
+    finally:
+        # Cleanup downloaded file
+        if downloaded_path and os.path.exists(downloaded_path):
+            try:
+                os.remove(downloaded_path)
+            except Exception as cleanup_error:
+                logger.error(f"Error cleaning up file: {cleanup_error}")
 
+async def process_receipt_with_ai(image_path: str, participants_info: str) -> str:
+    try:
+        # Load and process image
+        image = Image.open(image_path)
+        
+        # Prepare prompt with more specific instructions
+        prompt = f"""
+        Analyze this receipt image and calculate the bill split based on the following orders:
+        {participants_info}
+        pay attention to quantities and prices. Be careful, some items can be shared between people. Return only final split results
+        """
+
+        response = model.generate_content(
+            [prompt, image],
+        )
+
+        return response.text.strip()
+
+    except Exception as e:
+        logger.error(f"Error in process_receipt_with_ai: {str(e)}", exc_info=True)
+        raise
 
 def main() -> None:
-    """Start the bot."""
+
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # Command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
 
-    # Message handler for photos with mentions
-    # Filters.PHOTO checks for messages containing photos
-    # We add the logic *inside* handle_receipt to check for the caption mention
-    application.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.GROUPS, handle_receipt))
 
-    # --- Optional: Handler for when the bot is added to a group ---
-    # You might use a ChatMemberHandler or check message.new_chat_members in a general MessageHandler
+    application.add_handler(MessageHandler(
+        filters.PHOTO & (filters.COMMAND | filters.ChatType.GROUPS | filters.ChatType.PRIVATE), 
+        handle_receipt
+    ))
 
-    # Start the Bot (using polling)
-    logger.info("Starting bot polling...")
-    application.run_polling()
+    logger.info("Starting bot...")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
     main()
