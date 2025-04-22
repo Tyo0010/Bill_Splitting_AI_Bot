@@ -1,5 +1,7 @@
 # Bill Splitting AI Bot
 
+<img width="1119" alt="Screenshot 2025-04-22 at 9 19 24 PM" src="https://github.com/user-attachments/assets/e08150be-9061-47cb-990b-2b7ef80c09cd" />
+
 A Telegram bot that uses Google's Gemini AI to analyze receipt photos and split bills among participants.
 
 ## Features
@@ -50,8 +52,5 @@ Person2: item1, item2
 - Telegram Bot Token
 - Google Gemini API Key
 
-## Demo
-
-<img width="1119" alt="Screenshot 2025-04-22 at 9 19 24 PM" src="https://github.com/user-attachments/assets/e08150be-9061-47cb-990b-2b7ef80c09cd" />
 
 
