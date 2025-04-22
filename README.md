@@ -50,6 +50,8 @@ Person2: item1, item2
 - Telegram Bot Token
 - Google Gemini API Key
 
-## License
+## Demo
 
-MIT
+<img width="381" alt="Screenshot 2025-04-22 at 9 14 28 PM" src="https://github.com/user-attachments/assets/4424e079-0a78-4da9-8a25-1e35ae575a47" />
+![photo_2025-04-22 21 14 46](https://github.com/user-attachments/assets/6f8ed865-f18e-49a9-aa96-9e455b83df93)
+
