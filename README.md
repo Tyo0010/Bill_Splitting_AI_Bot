@@ -52,7 +52,6 @@ Person2: item1, item2
 
 ## Demo
 
-<img width="381" alt="Screenshot 2025-04-22 at 9 14 28 PM" src="https://github.com/user-attachments/assets/4424e079-0a78-4da9-8a25-1e35ae575a47" />
+<img width="1119" alt="Screenshot 2025-04-22 at 9 19 24 PM" src="https://github.com/user-attachments/assets/e08150be-9061-47cb-990b-2b7ef80c09cd" />
 
-![photo_2025-04-22 21 14 46](https://github.com/user-attachments/assets/3c9b80c4-0942-420d-a9f6-8197d9033f9e)
 
