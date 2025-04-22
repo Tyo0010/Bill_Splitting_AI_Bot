@@ -1,19 +1,22 @@
 import os
 import logging
-import google.generativeai as genai  # Updated import
+from dotenv import load_dotenv
+import google.generativeai as genai
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from PIL import Image
 
+# Load environment variables from .env file
+load_dotenv()
 
 # Update constants
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 BOT_USERNAME = "@Bill_Splitting_AI_Bot"
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")  # Replace with your actual API key
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Initialize Gemini client with updated model
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')  # Updated model version
+model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
