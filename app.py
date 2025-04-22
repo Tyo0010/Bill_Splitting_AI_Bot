@@ -9,7 +9,7 @@ from PIL import Image
 # Update constants
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 BOT_USERNAME = "@Bill_Splitting_AI_Bot"
-GEMINI_API_KEY = "AIzaSyB5dTq2XK6ut9O46_ez48qBcxJe54Rn-uI"
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")  # Replace with your actual API key
 
 # Initialize Gemini client with updated model
 genai.configure(api_key=GEMINI_API_KEY)
