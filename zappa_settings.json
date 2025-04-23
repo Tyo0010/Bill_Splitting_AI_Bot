@@ -1,5 +1,5 @@
 {
-    "main": { 
+    "app": { 
         "app_function": "app.lambda_handler",
         "project_name": "bill-splitting-bot",
         "runtime": "python3.11",
