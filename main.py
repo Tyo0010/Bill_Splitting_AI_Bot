@@ -150,30 +150,46 @@ application.add_handler(TypeHandler(Update, handle_receipt)) # Simplified handle
 async def lambda_handler_async(event, context):
     """AWS Lambda handler function."""
     try:
-        # Log safely - avoid dumping the whole event if it contains non-serializable types
-        # logger.info(f"Received event: {json.dumps(event)}") # Original problematic line
         logger.info(f"Received event type: {type(event)}")
-        # You can try logging specific parts if needed, e.g., headers:
-        # if isinstance(event, dict):
-        #     logger.info(f"Event headers: {event.get('headers')}")
-        #     logger.info(f"Event body type: {type(event.get('body'))}")
+        # Log the keys of the event dictionary to understand its structure
+        if isinstance(event, dict):
+            logger.info(f"Event keys: {list(event.keys())}")
 
-        # Ensure application is initialized (it is, as it's global)
-        # Process the update from the event body
         await application.initialize() # Initialize handlers
 
-        # Extract the body, which should be JSON from Telegram
-        body_str = event.get("body", "{}")
-        if not isinstance(body_str, str):
-             # If the body isn't a string (e.g., BytesIO), try decoding it
-             # This might depend on how API Gateway/Zappa passes the body
-             try:
-                 body_str = body_str.decode('utf-8')
-             except (AttributeError, UnicodeDecodeError):
-                 logger.error("Could not decode event body to string.")
-                 body_str = "{}" # Fallback to empty JSON
+        # --- Improved Body Handling ---
+        body = event.get("body")
+        data = None
 
-        update = Update.de_json(json.loads(body_str), application.bot)
+        if isinstance(body, str):
+            logger.info("Event body is a string, parsing JSON.")
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError as json_err:
+                logger.error(f"Failed to parse JSON from event body string: {json_err}")
+                logger.error(f"Body string was: {body[:500]}") # Log beginning of string
+                return {'statusCode': 400, 'body': 'Invalid JSON body'}
+        elif isinstance(body, dict):
+            logger.info("Event body is already a dict.")
+            data = body # Assume it's the already parsed JSON data
+        else:
+            logger.error(f"Unexpected event body type: {type(body)}. Body: {body}")
+            return {'statusCode': 400, 'body': 'Unexpected body format'}
+
+        if not data:
+             logger.error("Could not extract data from event body.")
+             return {'statusCode': 400, 'body': 'Empty or invalid data'}
+        # --- End Improved Body Handling ---
+
+        # Log the keys of the extracted data to confirm update_id presence
+        logger.info(f"Data keys for Update.de_json: {list(data.keys())}")
+
+        # Check if update_id is present before deserializing
+        if 'update_id' not in data:
+            logger.error(f"Missing 'update_id' in data: {data}")
+            return {'statusCode': 400, 'body': "Missing 'update_id' in request data"}
+
+        update = Update.de_json(data=data, bot=application.bot)
         await application.process_update(update)
 
         logger.info("Update processed successfully")
@@ -191,7 +207,8 @@ async def lambda_handler_async(event, context):
 # --- Wrapper for Lambda runtime ---
 def lambda_handler(event, context):
     """Synchronous wrapper for the async handler."""
-    return asyncio.get_event_loop().run_until_complete(lambda_handler_async(event, context))
+    # Use asyncio.run() in Python 3.7+ for cleaner event loop management
+    return asyncio.run(lambda_handler_async(event, context))
 
 # --- Optional: Function to set the webhook (run once locally or via Lambda invoke) ---
 async def set_webhook():
