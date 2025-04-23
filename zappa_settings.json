@@ -1,0 +1,22 @@
+{
+    "main": { 
+        "app_function": "main.app",
+        "project_name": "bill-splitting-bot",
+        "runtime": "python3.11",
+        "s3_bucket": "zappa-bill-splitter-unique-bucket",
+        "aws_region": "ap-southeast-1",
+        "timeout_seconds": 30,
+        "memory_size": 128,
+        "keep_warm": false,
+        "environment_variables": {
+            "BOT_TOKEN": "7534072343:AAFjbPGd_3J7nMb4GG8rgdH8tby8d7XQYAo",
+            "GEMINI_API_KEY": "AIzaSyB5dTq2XK6ut9O46_ez48qBcxJe54Rn-uI"
+        },
+         "aws_environment_variables": { 
+            "BOT_TOKEN": "7534072343:AAFjbPGd_3J7nMb4GG8rgdH8tby8d7XQYAo",
+            "GEMINI_API_KEY": "AIzaSyB5dTq2XK6ut9O46_ez48qBcxJe54Rn-uI",
+            "BOT_USERNAME": "@Bill_Splitting_AI_Bot", 
+            "WEBHOOK_URL": "" 
+         }
+    }
+}

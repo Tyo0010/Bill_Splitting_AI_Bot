@@ -1,0 +1,73 @@
+# filepath: /Users/tyo/pet_projects/Bill_Splitting_AI_Bot/.github/workflows/main.yml
+name: Deploy to AWS Lambda via Zappa
+
+on:
+  push:
+    branches:
+      - main # Or your deployment branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4 # Updated version
+
+      - name: Set up Python
+        uses: actions/setup-python@v5 # Updated version
+        with:
+          python-version: "3.11" # Match zappa_settings.json
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install zappa # Install zappa
+          # httplib2 should be handled by requirements.txt if needed, otherwise keep:
+          # pip install httplib2==0.22.0
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1 # Match zappa_settings.json
+
+      - name: Set Environment Variables in zappa_settings.json
+        # This step injects secrets into the aws_environment_variables section
+        # Zappa uses this section to set environment variables in Lambda
+        run: |
+          jq '.main.aws_environment_variables |= . + {
+          "BOT_TOKEN": "${{ secrets.BOT_TOKEN }}",
+          "GEMINI_API_KEY": "${{ secrets.GEMINI_API_KEY }}",
+          "BOT_USERNAME": "${{ secrets.BOT_USERNAME }}",
+          "WEBHOOK_URL": "${{ secrets.WEBHOOK_URL }}"
+          }' zappa_settings.json > zappa_settings_temp.json && mv zappa_settings_temp.json zappa_settings.json
+        env:
+          # Pass secrets to the environment for jq to use
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          BOT_USERNAME: ${{ secrets.BOT_USERNAME }} # Or hardcode if static
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }} # API Gateway URL
+
+      - name: Deploy or Update Lambda via Zappa
+        run: |
+          source venv/bin/activate
+          # Deploy for the first time or update if it exists
+          zappa update main || zappa deploy main
+
+          # After the first deploy, get the API Gateway URL and set the webhook
+          # You might need to do the setWebhook step manually the first time
+          # or enhance this script to retrieve the URL and call the Telegram API.
+          # Example (conceptual - needs refinement):
+          # API_URL=$(zappa status main --json | jq -r '.api_gateway_url')
+          # curl -F "url=${API_URL}" https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/setWebhook
