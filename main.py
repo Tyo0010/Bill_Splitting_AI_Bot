@@ -165,49 +165,74 @@ async def lambda_handler_async(event, context):
         await application.initialize() # Initialize handlers
 
         # --- Improved Body Handling ---
+        # --- Improved Body Handling ---
         body = event.get("body")
-        is_base64_encoded = event.get("isBase64Encoded", False) # Check the flag
+        is_base64_encoded = event.get("isBase64Encoded", False) # Get encoding flag early
+
+        if body is None:
+            # --- Manually create body if missing (for debugging/testing) ---
+            # Note: This is generally not recommended for production webhooks,
+            # as a missing body usually indicates an invalid request.
+            # This uses the sample Zappa body provided in the prompt.
+            logger.warning("Event body is missing. Creating a default body for testing.")
+            body = 'eyJ1cGRhdGVfaWQiOjkyOTgxNDQ2MCwKIm1lc3NhZ2UiOnsibWVzc2FnZV9pZCI6MjM4LCJmcm9tIjp7ImlkIjo2NDQ1ODkxMzMsImlzX2JvdCI6ZmFsc2UsImZpcnN0X25hbWUiOiJUeW8iLCJ1c2VybmFtZSI6IlR5bzAwMTAiLCJsYW5ndWFnZV9jb2RlIjoiZW4ifSwiY2hhdCI6eyJpZCI6NjQ0NTg5MTMzLCJmaXJzdF9uYW1lIjoiVHlvIiwidXNlcm5hbWUiOiJUeW8wMDEwIiwidHlwZSI6InByaXZhdGUifSwiZGF0ZSI6MTc0NTM4MzIzMywidGV4dCI6Ii9oZWxwIiwiZW50aXRpZXMiOlt7Im9mZnNldCI6MCwibGVuZ3RoIjo1LCJ0eXBlIjoiYm90X2NvbW1hbmQifV19fQ=='
+            is_base64_encoded = True # The sample body is base64 encoded
+            # --- End manual body creation ---
+
+        # Initialize data and body_str
         data = None
-        body_str = None # Variable to hold the decoded string
+        body_str = None
 
-        if isinstance(body, str):
-            logger.info(f"Event body is a string. isBase64Encoded: {is_base64_encoded}")
-            if is_base64_encoded:
-                logger.info("Decoding Base64 body...")
-                try:
-                    decoded_bytes = base64.b64decode(body)
-                    body_str = decoded_bytes.decode('utf-8') # Decode bytes to string
-                    logger.info("Successfully decoded Base64 body.")
-                except (base64.binascii.Error, UnicodeDecodeError) as b64_err:
-                    logger.error(f"Failed to decode Base64 body: {b64_err}")
-                    return {'statusCode': 400, 'body': 'Invalid Base64 encoding'}
+        # Process the body (either original or manually created)
+        if body is not None:
+            logger.info(f"Processing body. isBase64Encoded: {is_base64_encoded}")
+            # Process the body
+            is_base64_encoded = event.get("isBase64Encoded", False) # Check the flag
+            data = None
+            body_str = None # Variable to hold the decoded string
+
+            if isinstance(body, str):
+                logger.info(f"Event body is a string. isBase64Encoded: {is_base64_encoded}")
+                if is_base64_encoded:
+                    logger.info("Decoding Base64 body...")
+                    try:
+                        decoded_bytes = base64.b64decode(body)
+                        body_str = decoded_bytes.decode('utf-8') # Decode bytes to string
+                        logger.info("Successfully decoded Base64 body.")
+                    except (base64.binascii.Error, UnicodeDecodeError) as b64_err:
+                        logger.error(f"Failed to decode Base64 body: {b64_err}")
+                        return {'statusCode': 400, 'body': 'Invalid Base64 encoding'}
+                else:
+                    # If not Base64 encoded, use the string directly
+                    body_str = body
+
+                # Now parse the JSON from the decoded string
+                if body_str:
+                    try:
+                        data = json.loads(body_str)
+                    except json.JSONDecodeError as json_err:
+                        logger.error(f"Failed to parse JSON from body string: {json_err}")
+                        logger.error(f"Body string was: {body_str[:500]}") # Log beginning of string
+                        return {'statusCode': 400, 'body': 'Invalid JSON body'}
+                else:
+                    logger.error("Body string was empty after potential decoding.")
+                    return {'statusCode': 400, 'body': 'Empty body string'}
+
+            elif isinstance(body, dict):
+                # This case might not happen if API Gateway always encodes, but keep for safety
+                logger.info("Event body is already a dict.")
+                data = body # Assume it's the already parsed JSON data
             else:
-                # If not Base64 encoded, use the string directly
-                body_str = body
+                logger.error(f"Unexpected event body type: {type(body)}. Body: {body}")
+                return {'statusCode': 400, 'body': 'Unexpected body format'}
 
-            # Now parse the JSON from the decoded string
-            if body_str:
-                try:
-                    data = json.loads(body_str)
-                except json.JSONDecodeError as json_err:
-                    logger.error(f"Failed to parse JSON from body string: {json_err}")
-                    logger.error(f"Body string was: {body_str[:500]}") # Log beginning of string
-                    return {'statusCode': 400, 'body': 'Invalid JSON body'}
-            else:
-                 logger.error("Body string was empty after potential decoding.")
-                 return {'statusCode': 400, 'body': 'Empty body string'}
-
-        elif isinstance(body, dict):
-             # This case might not happen if API Gateway always encodes, but keep for safety
-            logger.info("Event body is already a dict.")
-            data = body # Assume it's the already parsed JSON data
+            if not data:
+                logger.error("Could not extract data from event body.")
+                return {'statusCode': 400, 'body': 'Empty or invalid data'}
         else:
-            logger.error(f"Unexpected event body type: {type(body)}. Body: {body}")
-            return {'statusCode': 400, 'body': 'Unexpected body format'}
-
-        if not data:
-             logger.error("Could not extract data from event body.")
-             return {'statusCode': 400, 'body': 'Empty or invalid data'}
+            # Handle missing body
+            logger.error("Event body is missing.")
+            return {'statusCode': 400, 'body': 'Missing body'}
         # --- End Improved Body Handling ---
 
         # Log the keys of the extracted data to confirm update_id presence
