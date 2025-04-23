@@ -241,6 +241,7 @@ async def lambda_handler_async(event, context):
 def lambda_handler(event, context):
     """Synchronous wrapper for the async handler."""
     # Use asyncio.run() in Python 3.7+ for cleaner event loop management
+    logger.info(f"Received raw event: {event}")
     return asyncio.run(lambda_handler_async(event, context))
 
 # --- Optional: Function to set the webhook (run once locally or via Lambda invoke) ---
