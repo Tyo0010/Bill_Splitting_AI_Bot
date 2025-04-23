@@ -162,7 +162,7 @@ async def lambda_handler_async(event, context):
         await application.initialize() # Initialize handlers
 
         # --- Simplified and Corrected Body Handling ---
-        body_content = event.get("body")
+        body_content = event.get("body") # Use .get() for safer access
         logger.info({body_content})
         is_base64 = event.get("isBase64Encoded", True)
         data = None # Variable to hold the final parsed JSON data
@@ -242,6 +242,12 @@ def lambda_handler(event, context):
     """Synchronous wrapper for the async handler."""
     # Use asyncio.run() in Python 3.7+ for cleaner event loop management
     logger.info(f"Received raw event: {event}")
+    body_content = event.get("body")
+    logger.info({body_content})
+    is_base64 = event.get("isBase64Encoded", True)
+    decoded_bytes = base64.b64decode(body_str)
+    body_str = decoded_bytes.decode('utf-8') # Decode bytes to string
+    logger.info("Successfully decoded Base64 body.")
     return asyncio.run(lambda_handler_async(event, context))
 
 # --- Optional: Function to set the webhook (run once locally or via Lambda invoke) ---
