@@ -163,6 +163,7 @@ async def lambda_handler_async(event, context):
 
         # --- Simplified and Corrected Body Handling ---
         body_content = event.get("body")
+        logger.info({body_content})
         is_base64 = event.get("isBase64Encoded", True)
         data = None # Variable to hold the final parsed JSON data
 
