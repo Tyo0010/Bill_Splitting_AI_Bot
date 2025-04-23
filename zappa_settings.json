@@ -12,7 +12,6 @@
 
             "BOT_TOKEN": "",
             "GEMINI_API_KEY": "",
-            "BOT_USERNAME": "",
             "WEBHOOK_URL": ""
          },
          "exclude": [
