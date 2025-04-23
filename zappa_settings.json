@@ -1,6 +1,6 @@
 {
-    "app": { 
-        "app_function": "app.lambda_handler",
+    "main": { 
+        "app_function": "main.lambda_handler",
         "project_name": "bill-splitting-bot",
         "runtime": "python3.11",
         "s3_bucket": "zappa-bill-splitter-unique-bucket",
