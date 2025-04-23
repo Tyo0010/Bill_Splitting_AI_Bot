@@ -150,6 +150,12 @@ application.add_handler(TypeHandler(Update, handle_receipt)) # Simplified handle
 async def lambda_handler_async(event, context):
     """AWS Lambda handler function."""
     try:
+        # --- Log the raw event first for debugging ---
+        # Be mindful this might log sensitive info if the body contains it,
+        # but it's crucial for debugging the event structure.
+        logger.info(f"Received raw event: {event}")
+        # --- End raw event logging ---
+
         logger.info(f"Received event type: {type(event)}")
         # Log the keys of the event dictionary to understand its structure
         if isinstance(event, dict):
