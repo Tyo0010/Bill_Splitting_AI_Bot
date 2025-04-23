@@ -150,12 +150,30 @@ application.add_handler(TypeHandler(Update, handle_receipt)) # Simplified handle
 async def lambda_handler_async(event, context):
     """AWS Lambda handler function."""
     try:
-        logger.info(f"Received event: {json.dumps(event)}")
+        # Log safely - avoid dumping the whole event if it contains non-serializable types
+        # logger.info(f"Received event: {json.dumps(event)}") # Original problematic line
+        logger.info(f"Received event type: {type(event)}")
+        # You can try logging specific parts if needed, e.g., headers:
+        # if isinstance(event, dict):
+        #     logger.info(f"Event headers: {event.get('headers')}")
+        #     logger.info(f"Event body type: {type(event.get('body'))}")
 
         # Ensure application is initialized (it is, as it's global)
         # Process the update from the event body
         await application.initialize() # Initialize handlers
-        update = Update.de_json(json.loads(event.get("body", "{}")), application.bot)
+
+        # Extract the body, which should be JSON from Telegram
+        body_str = event.get("body", "{}")
+        if not isinstance(body_str, str):
+             # If the body isn't a string (e.g., BytesIO), try decoding it
+             # This might depend on how API Gateway/Zappa passes the body
+             try:
+                 body_str = body_str.decode('utf-8')
+             except (AttributeError, UnicodeDecodeError):
+                 logger.error("Could not decode event body to string.")
+                 body_str = "{}" # Fallback to empty JSON
+
+        update = Update.de_json(json.loads(body_str), application.bot)
         await application.process_update(update)
 
         logger.info("Update processed successfully")
