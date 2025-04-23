@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from PIL import Image
 import asyncio
 import json # Import json
+import base64 # <--- Import base64
 
 # Load environment variables from .env file
 # load_dotenv()
@@ -165,17 +166,39 @@ async def lambda_handler_async(event, context):
 
         # --- Improved Body Handling ---
         body = event.get("body")
+        is_base64_encoded = event.get("isBase64Encoded", False) # Check the flag
         data = None
+        body_str = None # Variable to hold the decoded string
 
         if isinstance(body, str):
-            logger.info("Event body is a string, parsing JSON.")
-            try:
-                data = json.loads(body)
-            except json.JSONDecodeError as json_err:
-                logger.error(f"Failed to parse JSON from event body string: {json_err}")
-                logger.error(f"Body string was: {body[:500]}") # Log beginning of string
-                return {'statusCode': 400, 'body': 'Invalid JSON body'}
+            logger.info(f"Event body is a string. isBase64Encoded: {is_base64_encoded}")
+            if is_base64_encoded:
+                logger.info("Decoding Base64 body...")
+                try:
+                    decoded_bytes = base64.b64decode(body)
+                    body_str = decoded_bytes.decode('utf-8') # Decode bytes to string
+                    logger.info("Successfully decoded Base64 body.")
+                except (base64.binascii.Error, UnicodeDecodeError) as b64_err:
+                    logger.error(f"Failed to decode Base64 body: {b64_err}")
+                    return {'statusCode': 400, 'body': 'Invalid Base64 encoding'}
+            else:
+                # If not Base64 encoded, use the string directly
+                body_str = body
+
+            # Now parse the JSON from the decoded string
+            if body_str:
+                try:
+                    data = json.loads(body_str)
+                except json.JSONDecodeError as json_err:
+                    logger.error(f"Failed to parse JSON from body string: {json_err}")
+                    logger.error(f"Body string was: {body_str[:500]}") # Log beginning of string
+                    return {'statusCode': 400, 'body': 'Invalid JSON body'}
+            else:
+                 logger.error("Body string was empty after potential decoding.")
+                 return {'statusCode': 400, 'body': 'Empty body string'}
+
         elif isinstance(body, dict):
+             # This case might not happen if API Gateway always encodes, but keep for safety
             logger.info("Event body is already a dict.")
             data = body # Assume it's the already parsed JSON data
         else:
