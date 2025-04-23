@@ -149,92 +149,43 @@ application.add_handler(TypeHandler(Update, handle_receipt)) # Simplified handle
 
 # --- Lambda Handler Function ---
 async def lambda_handler_async(event, context):
-    """AWS Lambda handler function."""
+    """Processes the incoming Telegram update from the Lambda event."""
     try:
-        # --- Log the raw event first for debugging ---
-        # Be mindful this might log sensitive info if the body contains it,
-        # but it's crucial for debugging the event structure.
-        logger.info(f"Received raw event: {event}")
-        logger.info(f"Received event type: {type(event)}")
-        if isinstance(event, dict):
-            logger.info(f"Event keys: {list(event.keys())}")
+        # The wrapper function lambda_handler already decodes the body if needed
+        body_str = event.get("body", "{}")
+        logger.debug(f"Received body string: {body_str}")
 
-        await application.initialize() # Initialize handlers
+        # Parse the JSON string body into a Python dictionary
+        update_data = json.loads(body_str)
+        logger.debug(f"Parsed update data: {update_data}")
 
-        # --- Simplified and Corrected Body Handling ---
-        body_content = event.get("body") # Use .get() for safer access
-        logger.info({body_content})
-        is_base64 = event.get("isBase64Encoded", True)
-        data = None # Variable to hold the final parsed JSON data
+        # Create an Update object from the dictionary
+        # The application needs to be initialized for bot instance
+        await application.initialize()
+        update = Update.de_json(update_data, application.bot)
+        logger.info(f"Processing update: {update.update_id}")
 
-        if body_content is None:
-            logger.error("Event body is missing.")
-            return {'statusCode': 400, 'body': 'Missing body'}
-
-        if not isinstance(body_content, str):
-            # If the body is somehow already a dict (less likely with proxy integration)
-            if isinstance(body_content, dict):
-                 logger.warning("Event body was already a dict, using directly.")
-                 data = body_content
-            else:
-                logger.error(f"Unexpected event body type: {type(body_content)}")
-                return {'statusCode': 400, 'body': 'Unexpected body format'}
-        else:
-            # Body is a string, decode if necessary
-            body_str = body_content
-            if is_base64:
-                logger.info("Body is Base64 encoded, decoding...")
-                try:
-                    decoded_bytes = base64.b64decode(body_str)
-                    body_str = decoded_bytes.decode('utf-8') # Decode bytes to string
-                    logger.info("Successfully decoded Base64 body.")
-                except (base64.binascii.Error, UnicodeDecodeError) as b64_err:
-                    logger.error(f"Failed to decode Base64 body: {b64_err}")
-                    return {'statusCode': 400, 'body': 'Invalid Base64 encoding'}
-            else:
-                 logger.info("Body is not Base64 encoded.")
-
-            # Now parse the JSON string (either original or decoded)
-            if not body_str:
-                 logger.error("Body string is empty after potential decoding.")
-                 return {'statusCode': 400, 'body': 'Empty body string'}
-
-            try:
-                data = json.loads(body_str)
-                logger.info("Successfully parsed JSON from body string.")
-            except json.JSONDecodeError as json_err:
-                logger.error(f"Failed to parse JSON from body string: {json_err}")
-                logger.error(f"Body string was: {body_str[:500]}") # Log beginning of string
-                return {'statusCode': 400, 'body': 'Invalid JSON body'}
-
-        # --- End Simplified Body Handling ---
-
-        if not data:
-             # This check might be redundant now but kept for safety
-            logger.error("Could not extract data from event body.")
-            return {'statusCode': 400, 'body': 'Empty or invalid data'}
-
-        # Log the keys of the extracted data to confirm update_id presence
-        logger.info(f"Data keys for Update.de_json: {list(data.keys())}")
-
-        # Check if update_id is present before deserializing
-        if 'update_id' not in data:
-            logger.error(f"Missing 'update_id' in data: {data}")
-            return {'statusCode': 400, 'body': "Missing 'update_id' in request data"}
-
-        update = Update.de_json(data=data, bot=application.bot)
+        # Process the update using the application's handlers
         await application.process_update(update)
 
-        logger.info("Update processed successfully")
+        # Return a 200 OK response to Telegram/API Gateway
         return {
             'statusCode': 200,
-            'body': 'Update processed'
+            'body': json.dumps('Update processed successfully')
         }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON: {e} - Body was: {body_str}", exc_info=True)
+        return {'statusCode': 400, 'body': json.dumps('Invalid JSON received')}
     except Exception as e:
-        logger.error(f"Error processing update in Lambda: {e}", exc_info=True)
+        logger.error(f"Error processing update in lambda_handler_async: {e}", exc_info=True)
+        # Return an error response, but Telegram might retry if it doesn't get 200
+        # It's often better to return 200 even on processing errors to avoid retries,
+        # and handle the error internally (e.g., notify user).
+        # However, for debugging, a 500 might be useful initially.
         return {
-            'statusCode': 500,
-            'body': 'Error processing update'
+            'statusCode': 500, # Or 200 to prevent Telegram retries
+            'body': json.dumps('Error processing update')
         }
 
 # --- Wrapper for Lambda runtime ---
