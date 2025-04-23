@@ -43,17 +43,21 @@ jobs:
           aws-region: ap-southeast-1 # Match zappa_settings.json
 
       - name: Set Environment Variables in zappa_settings.json
-        # This step injects secrets into the aws_environment_variables section
-        # Zappa uses this section to set environment variables in Lambda
+        # Use --arg to safely pass secrets as variables to jq
         run: |
-          jq '.main.aws_environment_variables |= . + {
-          "BOT_TOKEN": "${{ secrets.BOT_TOKEN }}",
-          "GEMINI_API_KEY": "${{ secrets.GEMINI_API_KEY }}",
-          "BOT_USERNAME": "${{ secrets.BOT_USERNAME }}",
-          "WEBHOOK_URL": "${{ secrets.WEBHOOK_URL }}"
-          }' zappa_settings.json > zappa_settings_temp.json && mv zappa_settings_temp.json zappa_settings.json
+          jq \
+            --arg bot_token "$BOT_TOKEN" \
+            --arg gemini_key "$GEMINI_API_KEY" \
+            --arg bot_username "$BOT_USERNAME" \
+            --arg webhook_url "$WEBHOOK_URL" \
+            '.main.aws_environment_variables |= . + {
+              "BOT_TOKEN": $bot_token,
+              "GEMINI_API_KEY": $gemini_key,
+              "BOT_USERNAME": $bot_username,
+              "WEBHOOK_URL": $webhook_url
+            }' zappa_settings.json > zappa_settings_temp.json && mv zappa_settings_temp.json zappa_settings.json
         env:
-          # Pass secrets to the environment for jq to use
+          # Environment variables are still used to pass secrets to the step
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BOT_USERNAME: ${{ secrets.BOT_USERNAME }} # Or hardcode if static

@@ -24,6 +24,7 @@
             "venv",
             "*.DS_Store"
         ],
-        "touch": false // Disable the status check causing the 502
+        "touch": false 
+        
     }
 }
