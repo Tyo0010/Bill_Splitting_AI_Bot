@@ -145,7 +145,7 @@ async def process_receipt_with_ai(image_path: str, participants_info: str) -> st
 
 
 # --- Lambda Handler Function ---
-async def lambda_handler_async(event, context):
+async def lambda_handler_async(event, context, application: Application):
     """Processes the incoming Telegram update from the Lambda event."""
     try:
         # Check if the body is base64 encoded
@@ -217,16 +217,8 @@ def lambda_handler(event, context):
     
     """Synchronous wrapper for the async handler."""
 
-    return asyncio.run(lambda_handler_async(event, context))
+    return asyncio.run(lambda_handler_async(event, context, application))
 
-# --- Optional: Function to set the webhook (run once locally or via Lambda invoke) ---
-async def set_webhook():
-    if not WEBHOOK_URL:
-        logger.error("WEBHOOK_URL environment variable not set.")
-        return
-    await application.initialize()
-    await application.bot.set_webhook(url=WEBHOOK_URL)
-    logger.info(f"Webhook set to {WEBHOOK_URL}")
 
 # --- Remove the old main() polling logic ---
 # def main() -> None:
