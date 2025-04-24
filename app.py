@@ -8,7 +8,10 @@ import asyncio
 import json
 import base64
 import binascii
+from dotenv import load_dotenv
 from flask import Flask, request, Response # Import Flask components
+
+load_dotenv()  # Load environment variables from .env file
 
 # --- Environment Variables & Constants ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -35,7 +38,7 @@ else:
 
 # --- Telegram Bot Setup ---
 # Initialize the Application outside the request context for efficiency
-ptb_app = Application.builder().token(BOT_TOKEN).build()
+
 
 # --- Bot Command Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -135,14 +138,7 @@ async def process_receipt_with_ai(image_path: str, participants_info: str) -> st
         logger.error(f"Error in process_receipt_with_ai: {str(e)}", exc_info=True)
         raise
 
-# --- Register Handlers with PTB Application ---
-ptb_app.add_handler(CommandHandler("start", start))
-ptb_app.add_handler(CommandHandler("help", help_command))
-# Use MessageHandler to specifically catch photos with captions mentioning the bot
-ptb_app.add_handler(MessageHandler(
-    filters.PHOTO & filters.CaptionRegex(BOT_USERNAME) & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP),
-    handle_receipt
-))
+
 # Optional: Add a handler for private chats if needed
 # ptb_app.add_handler(MessageHandler(filters.PHOTO & filters.CaptionRegex(BOT_USERNAME) & filters.ChatType.PRIVATE, handle_receipt))
 
@@ -154,6 +150,15 @@ app = Flask(__name__)
 async def webhook():
     """Webhook endpoint to receive updates from Telegram."""
     logger.info("Webhook received a request.")
+    ptb_app = Application.builder().token(BOT_TOKEN).build()
+    # --- Register Handlers with PTB Application ---
+    ptb_app.add_handler(CommandHandler("start", start))
+    ptb_app.add_handler(CommandHandler("help", help_command))
+    # Use MessageHandler to specifically catch photos with captions mentioning the bot
+    ptb_app.add_handler(MessageHandler(
+        filters.PHOTO & filters.CaptionRegex(BOT_USERNAME) & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP),
+        handle_receipt
+    ))
     if request.content_type != 'application/json':
         logger.warning(f"Invalid content type: {request.content_type}")
         return Response(status=403) # Forbidden
