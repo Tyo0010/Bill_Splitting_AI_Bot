@@ -2,6 +2,7 @@ import os
 import logging
 import google.generativeai as genai
 from telegram import Update
+# Import Bot separately if needed in set_webhook
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, TypeHandler
 from PIL import Image
 import asyncio
@@ -191,6 +192,7 @@ def webhook(): # Changed to synchronous def
 @app.route('/setwebhook', methods=['GET', 'POST'])
 def set_telegram_webhook(): # Changed to synchronous def
     """Sets the Telegram webhook URL. Uses asyncio.run for PTB."""
+    from telegram import Bot # Import Bot locally for this function
     if not WEBHOOK_URL:
         return "Webhook URL not configured in environment variables.", 500
 
@@ -201,13 +203,10 @@ def set_telegram_webhook(): # Changed to synchronous def
     # --- Use asyncio.run to handle the async PTB call ---
     async def set_hook():
         try:
-            # Initialize app to ensure bot object is ready
-            await ptb_app.initialize()
-            if not ptb_app.bot:
-                 logger.error("PTB application bot instance is None for set_webhook.")
-                 raise RuntimeError("Bot initialization failed")
+            # Create a temporary Bot instance just for this call
+            temp_bot = Bot(token=BOT_TOKEN)
 
-            await ptb_app.bot.set_webhook(full_webhook_url)
+            await temp_bot.set_webhook(full_webhook_url)
             print(f"Webhook successfully set to {full_webhook_url}")
             return f"Webhook successfully set to {full_webhook_url}", 200
         except Exception as e:
@@ -217,8 +216,15 @@ def set_telegram_webhook(): # Changed to synchronous def
             raise # Re-raise the exception to be caught below
 
     try:
-        result, status_code = asyncio.run(set_hook())
+        # --- Explicitly create and manage a new event loop ---
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result, status_code = loop.run_until_complete(set_hook())
+        finally:
+            loop.close()
         return result, status_code
+        # --- End explicit loop management ---
     except Exception as e:
         # Log the final error caught from asyncio.run
         logger.error(f"Failed to set webhook: {e}", exc_info=True)
