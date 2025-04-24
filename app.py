@@ -146,19 +146,19 @@ async def process_receipt_with_ai(image_path: str, participants_info: str) -> st
 # --- Flask Application ---
 app = Flask(__name__)
 
+ptb_app = Application.builder().token(BOT_TOKEN).build()
+    # --- Register Handlers with PTB Application ---
+ptb_app.add_handler(CommandHandler("start", start))
+ptb_app.add_handler(CommandHandler("help", help_command))
+    # Use MessageHandler to specifically catch photos with captions mentioning the bot
+ptb_app.add_handler(MessageHandler(
+    filters.PHOTO & filters.CaptionRegex(BOT_USERNAME) & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP),
+    handle_receipt
+))
 @app.route('/webhook', methods=['POST'])
 async def webhook():
     """Webhook endpoint to receive updates from Telegram."""
     logger.info("Webhook received a request.")
-    ptb_app = Application.builder().token(BOT_TOKEN).build()
-    # --- Register Handlers with PTB Application ---
-    ptb_app.add_handler(CommandHandler("start", start))
-    ptb_app.add_handler(CommandHandler("help", help_command))
-    # Use MessageHandler to specifically catch photos with captions mentioning the bot
-    ptb_app.add_handler(MessageHandler(
-        filters.PHOTO & filters.CaptionRegex(BOT_USERNAME) & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP),
-        handle_receipt
-    ))
     if request.content_type != 'application/json':
         logger.warning(f"Invalid content type: {request.content_type}")
         return Response(status=403) # Forbidden
