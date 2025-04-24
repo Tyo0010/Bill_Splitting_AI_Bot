@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from PIL import Image
 import asyncio
 import json
+import io # <--- Add this import
 import base64
 import binascii
 from dotenv import load_dotenv
@@ -76,7 +77,7 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     photo = message.photo[-1]
     caption = message.caption or ""
-    downloaded_path = None
+    image_bytes = None # Use bytes instead of path
 
     if BOT_USERNAME not in caption:
         print(f"Bot username {BOT_USERNAME} not found in caption: '{caption}'. Ignoring.")
@@ -94,11 +95,13 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await message.reply_text("Processing receipt and calculating split...")
         photo_file = await photo.get_file()
-        # Note: download_to_drive might not work reliably in Lambda's ephemeral storage.
-        # Consider downloading to memory (BytesIO) if issues arise.
-        downloaded_path = await photo_file.download_to_drive()
 
-        split_result = await process_receipt_with_ai(downloaded_path, participants_info)
+        # Download photo to memory (BytesIO)
+        image_stream = io.BytesIO()
+        await photo_file.download_to_memory(image_stream)
+        image_stream.seek(0) # Reset stream position
+
+        split_result = await process_receipt_with_ai(image_stream, participants_info)
         escaped_result = split_result.replace(".", r"\.") # For MarkdownV2
         if not escaped_result.strip():
             escaped_result = "Could not extract split details."
@@ -113,28 +116,27 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text(
             "Sorry, an error occurred processing the receipt. Please check the image and caption format."
         )
-    finally:
-        if downloaded_path and os.path.exists(downloaded_path):
-            try:
-                os.remove(downloaded_path)
-                print(f"Cleaned up temporary file: {downloaded_path}")
-            except Exception as cleanup_error:
-                logger.error(f"Error cleaning up file: {cleanup_error}")
+    # No finally block needed for file cleanup when using BytesIO
 
-async def process_receipt_with_ai(image_path: str, participants_info: str) -> str:
+async def process_receipt_with_ai(image_stream: io.BytesIO, participants_info: str) -> str:
     if not model:
         raise ValueError("Gemini AI model not initialized.")
     try:
-        image = Image.open(image_path)
+        # Open image directly from the BytesIO stream
+        image = Image.open(image_stream)
         prompt = f"""
+        You are an expert receipt analyzing AI.
         Analyze this receipt image and calculate the bill split based on the following orders:
         {participants_info}
         Pay attention to quantities and prices. Be careful, some items can be shared between people.
+        Provide the final split per person clearly.
         """
-        response = await model.generate_content_async([prompt, image]) # Use async version if available/preferred
+        # Make sure generate_content_async is the correct method name for your version
+        response = await model.generate_content_async([prompt, image])
         return response.text.strip()
     except Exception as e:
         logger.error(f"Error in process_receipt_with_ai: {str(e)}", exc_info=True)
+        # Re-raise the exception so it's caught by handle_receipt's handler
         raise
 
 
