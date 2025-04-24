@@ -212,7 +212,6 @@ def lambda_handler(event, context):
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-# Use TypeHandler for general updates, including photos with captions
     application.add_handler(TypeHandler(Update, handle_receipt)) # Simplified handler
     
     """Synchronous wrapper for the async handler."""
