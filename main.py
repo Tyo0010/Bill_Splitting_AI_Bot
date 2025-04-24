@@ -8,6 +8,7 @@ from PIL import Image
 import asyncio
 import json # Import json
 import base64 # <--- Import base64
+import binascii # <--- Import binascii for error handling
 
 # Load environment variables from .env file
 # load_dotenv()
@@ -145,113 +146,60 @@ async def process_receipt_with_ai(image_path: str, participants_info: str) -> st
 
 # --- Lambda Handler Function ---
 async def lambda_handler_async(event, context):
-    """AWS Lambda handler function."""
+    """Processes the incoming Telegram update from the Lambda event."""
     try:
-        # --- Log the raw event first for debugging ---
-        # Be mindful this might log sensitive info if the body contains it,
-        # but it's crucial for debugging the event structure.
-        logger.info(f"Received raw event: {event}")
-        # --- End raw event logging ---
+        # Check if the body is base64 encoded
+        is_base64 = event.get("isBase64Encoded", False)
+        body_str = event.get("body", "{}")
+        # Log only the beginning of the raw body for brevity and security
+        logger.debug(f"Received raw body (isBase64Encoded={is_base64}): {body_str[:100]}...")
 
-        logger.info(f"Received event type: {type(event)}")
-        # Log the keys of the event dictionary to understand its structure
-        if isinstance(event, dict):
-            logger.info(f"Event keys: {list(event.keys())}")
+        if is_base64:
+            try:
+                # Decode the base64 string
+                decoded_bytes = base64.b64decode(body_str)
+                # Decode bytes to UTF-8 string
+                body_str = decoded_bytes.decode('utf-8')
+                logger.debug(f"Decoded body string: {body_str}")
+            except (binascii.Error, UnicodeDecodeError) as decode_error:
+                # Log the specific decoding error
+                logger.error(f"Error decoding base64 body: {decode_error} - Raw body started with: {event.get('body', '{}')[:100]}...", exc_info=True)
+                return {'statusCode': 400, 'body': json.dumps('Invalid base64 encoding')}
 
-        await application.initialize() # Initialize handlers
+        # Parse the JSON string body into a Python dictionary
+        update_data = json.loads(body_str)
+        logger.debug(f"Parsed update data: {update_data}")
 
-        # --- Improved Body Handling ---
-        # --- Improved Body Handling ---
-        body = event.get("body")
-        is_base64_encoded = event.get("isBase64Encoded", False) # Get encoding flag early
+        # Create an Update object from the dictionary
+        # Ensure the application is initialized and bot is available
+        await application.initialize()
+        if not application.bot:
+             logger.error("Application bot instance is None after initialization.")
+             # Return an error if the bot object isn't ready
+             return {'statusCode': 500, 'body': json.dumps('Bot initialization failed')}
 
-        if body is None:
-            # --- Manually create body if missing (for debugging/testing) ---
-            # Note: This is generally not recommended for production webhooks,
-            # as a missing body usually indicates an invalid request.
-            # This uses the sample Zappa body provided in the prompt.
-            logger.warning("Event body is missing. Creating a default body for testing.")
-            body = 'eyJ1cGRhdGVfaWQiOjkyOTgxNDQ2MCwKIm1lc3NhZ2UiOnsibWVzc2FnZV9pZCI6MjM4LCJmcm9tIjp7ImlkIjo2NDQ1ODkxMzMsImlzX2JvdCI6ZmFsc2UsImZpcnN0X25hbWUiOiJUeW8iLCJ1c2VybmFtZSI6IlR5bzAwMTAiLCJsYW5ndWFnZV9jb2RlIjoiZW4ifSwiY2hhdCI6eyJpZCI6NjQ0NTg5MTMzLCJmaXJzdF9uYW1lIjoiVHlvIiwidXNlcm5hbWUiOiJUeW8wMDEwIiwidHlwZSI6InByaXZhdGUifSwiZGF0ZSI6MTc0NTM4MzIzMywidGV4dCI6Ii9oZWxwIiwiZW50aXRpZXMiOlt7Im9mZnNldCI6MCwibGVuZ3RoIjo1LCJ0eXBlIjoiYm90X2NvbW1hbmQifV19fQ=='
-            is_base64_encoded = True # The sample body is base64 encoded
-            # --- End manual body creation ---
+        update = Update.de_json(update_data, application.bot)
+        logger.info(f"Processing update: {update.update_id}")
 
-        # Initialize data and body_str
-        data = None
-        body_str = None
-
-        # Process the body (either original or manually created)
-        if body is not None:
-            logger.info(f"Processing body. isBase64Encoded: {is_base64_encoded}")
-            # Process the body
-            is_base64_encoded = event.get("isBase64Encoded", False) # Check the flag
-            data = None
-            body_str = None # Variable to hold the decoded string
-
-            if isinstance(body, str):
-                logger.info(f"Event body is a string. isBase64Encoded: {is_base64_encoded}")
-                if is_base64_encoded:
-                    logger.info("Decoding Base64 body...")
-                    try:
-                        decoded_bytes = base64.b64decode(body)
-                        body_str = decoded_bytes.decode('utf-8') # Decode bytes to string
-                        logger.info("Successfully decoded Base64 body.")
-                    except (base64.binascii.Error, UnicodeDecodeError) as b64_err:
-                        logger.error(f"Failed to decode Base64 body: {b64_err}")
-                        return {'statusCode': 400, 'body': 'Invalid Base64 encoding'}
-                else:
-                    # If not Base64 encoded, use the string directly
-                    body_str = body
-
-                # Now parse the JSON from the decoded string
-                if body_str:
-                    try:
-                        data = json.loads(body_str)
-                    except json.JSONDecodeError as json_err:
-                        logger.error(f"Failed to parse JSON from body string: {json_err}")
-                        logger.error(f"Body string was: {body_str[:500]}") # Log beginning of string
-                        return {'statusCode': 400, 'body': 'Invalid JSON body'}
-                else:
-                    logger.error("Body string was empty after potential decoding.")
-                    return {'statusCode': 400, 'body': 'Empty body string'}
-
-            elif isinstance(body, dict):
-                # This case might not happen if API Gateway always encodes, but keep for safety
-                logger.info("Event body is already a dict.")
-                data = body # Assume it's the already parsed JSON data
-            else:
-                logger.error(f"Unexpected event body type: {type(body)}. Body: {body}")
-                return {'statusCode': 400, 'body': 'Unexpected body format'}
-
-            if not data:
-                logger.error("Could not extract data from event body.")
-                return {'statusCode': 400, 'body': 'Empty or invalid data'}
-        else:
-            # Handle missing body
-            logger.error("Event body is missing.")
-            return {'statusCode': 400, 'body': 'Missing body'}
-        # --- End Improved Body Handling ---
-
-        # Log the keys of the extracted data to confirm update_id presence
-        logger.info(f"Data keys for Update.de_json: {list(data.keys())}")
-
-        # Check if update_id is present before deserializing
-        if 'update_id' not in data:
-            logger.error(f"Missing 'update_id' in data: {data}")
-            return {'statusCode': 400, 'body': "Missing 'update_id' in request data"}
-
-        update = Update.de_json(data=data, bot=application.bot)
+        # Process the update using the application's handlers
         await application.process_update(update)
 
-        logger.info("Update processed successfully")
+        # Return a 200 OK response to Telegram/API Gateway
         return {
             'statusCode': 200,
-            'body': 'Update processed'
+            'body': json.dumps('Update processed successfully')
         }
+
+    except json.JSONDecodeError as e:
+        # Log if JSON parsing fails *after* potential decoding
+        logger.error(f"Error decoding JSON: {e} - Body after potential decode was: {body_str}", exc_info=True)
+        return {'statusCode': 400, 'body': json.dumps('Invalid JSON received')}
     except Exception as e:
-        logger.error(f"Error processing update in Lambda: {e}", exc_info=True)
+        logger.error(f"Error processing update in lambda_handler_async: {e}", exc_info=True)
+        # Return 500 for other unexpected errors during processing
         return {
             'statusCode': 500,
-            'body': 'Error processing update'
+            'body': json.dumps('Error processing update')
         }
 
 # --- Wrapper for Lambda runtime ---
@@ -268,7 +216,7 @@ def lambda_handler(event, context):
     application.add_handler(TypeHandler(Update, handle_receipt)) # Simplified handler
     
     """Synchronous wrapper for the async handler."""
-    # Use asyncio.run() in Python 3.7+ for cleaner event loop management
+
     return asyncio.run(lambda_handler_async(event, context))
 
 # --- Optional: Function to set the webhook (run once locally or via Lambda invoke) ---
