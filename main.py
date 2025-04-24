@@ -140,11 +140,7 @@ async def process_receipt_with_ai(image_path: str, participants_info: str) -> st
 
 
 # --- Initialize the application (outside the handler) ---
-application = Application.builder().token(BOT_TOKEN).build()
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("help", help_command))
-# Use TypeHandler for general updates, including photos with captions
-application.add_handler(TypeHandler(Update, handle_receipt)) # Simplified handler
+
 
 
 # --- Lambda Handler Function ---
@@ -264,6 +260,12 @@ def lambda_handler(event, context):
     logging.info("Lambda handler invoked")
     logging.info(f"Event: {event}")
     logging.info(f"Context: {context}")
+    
+    application = Application.builder().token(BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+# Use TypeHandler for general updates, including photos with captions
+    application.add_handler(TypeHandler(Update, handle_receipt)) # Simplified handler
     
     """Synchronous wrapper for the async handler."""
     # Use asyncio.run() in Python 3.7+ for cleaner event loop management

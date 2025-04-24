@@ -8,13 +8,6 @@
         "timeout_seconds": 60, 
         "memory_size": 256,   
         "keep_warm": false,
-        "aws_environment_variables": {
-
-            "BOT_TOKEN": "",
-            "GEMINI_API_KEY": "",
-            "BOT_USERNAME": "",
-            "WEBHOOK_URL": ""
-         },
          "exclude": [
             "*.pyc",
             "__pycache__",
