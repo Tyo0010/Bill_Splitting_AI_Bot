@@ -166,9 +166,12 @@ async def lambda_handler_async(event, context, application: Application):
                 logger.error(f"Error decoding base64 body: {decode_error} - Raw body started with: {event.get('body', '{}')[:100]}...", exc_info=True)
                 return {'statusCode': 400, 'body': json.dumps('Invalid base64 encoding')}
 
+        # --- Add logging for the string before JSON parsing ---
+        logger.debug(f"Body string before JSON parsing: {body_str}")
+        # --- End logging ---
         # Parse the JSON string body into a Python dictionary
         update_data = json.loads(body_str)
-        logger.debug(f"Parsed update data: {update_data}")
+        logger.debug(f"Parsed update data (type: {type(update_data)}): {update_data}") # Log type and content
 
         # Create an Update object from the dictionary
         # Ensure the application is initialized and bot is available
