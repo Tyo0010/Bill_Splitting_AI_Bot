@@ -8,6 +8,7 @@ from PIL import Image
 import asyncio
 import json # Import json
 import base64 # <--- Import base64
+import binascii # <--- Import binascii for error handling
 
 # Load environment variables from .env file
 # load_dotenv()
@@ -151,17 +152,36 @@ application.add_handler(TypeHandler(Update, handle_receipt)) # Simplified handle
 async def lambda_handler_async(event, context):
     """Processes the incoming Telegram update from the Lambda event."""
     try:
-        # The wrapper function lambda_handler already decodes the body if needed
+        # Check if the body is base64 encoded
+        is_base64 = event.get("isBase64Encoded", False)
         body_str = event.get("body", "{}")
-        logger.debug(f"Received body string: {body_str}")
+        # Log only the beginning of the raw body for brevity and security
+        logger.debug(f"Received raw body (isBase64Encoded={is_base64}): {body_str[:100]}...")
+
+        if is_base64:
+            try:
+                # Decode the base64 string
+                decoded_bytes = base64.b64decode(body_str)
+                # Decode bytes to UTF-8 string
+                body_str = decoded_bytes.decode('utf-8')
+                logger.debug(f"Decoded body string: {body_str}")
+            except (binascii.Error, UnicodeDecodeError) as decode_error:
+                # Log the specific decoding error
+                logger.error(f"Error decoding base64 body: {decode_error} - Raw body started with: {event.get('body', '{}')[:100]}...", exc_info=True)
+                return {'statusCode': 400, 'body': json.dumps('Invalid base64 encoding')}
 
         # Parse the JSON string body into a Python dictionary
         update_data = json.loads(body_str)
         logger.debug(f"Parsed update data: {update_data}")
 
         # Create an Update object from the dictionary
-        # The application needs to be initialized for bot instance
+        # Ensure the application is initialized and bot is available
         await application.initialize()
+        if not application.bot:
+             logger.error("Application bot instance is None after initialization.")
+             # Return an error if the bot object isn't ready
+             return {'statusCode': 500, 'body': json.dumps('Bot initialization failed')}
+
         update = Update.de_json(update_data, application.bot)
         logger.info(f"Processing update: {update.update_id}")
 
@@ -175,16 +195,14 @@ async def lambda_handler_async(event, context):
         }
 
     except json.JSONDecodeError as e:
-        logger.error(f"Error decoding JSON: {e} - Body was: {body_str}", exc_info=True)
+        # Log if JSON parsing fails *after* potential decoding
+        logger.error(f"Error decoding JSON: {e} - Body after potential decode was: {body_str}", exc_info=True)
         return {'statusCode': 400, 'body': json.dumps('Invalid JSON received')}
     except Exception as e:
         logger.error(f"Error processing update in lambda_handler_async: {e}", exc_info=True)
-        # Return an error response, but Telegram might retry if it doesn't get 200
-        # It's often better to return 200 even on processing errors to avoid retries,
-        # and handle the error internally (e.g., notify user).
-        # However, for debugging, a 500 might be useful initially.
+        # Return 500 for other unexpected errors during processing
         return {
-            'statusCode': 500, # Or 200 to prevent Telegram retries
+            'statusCode': 500,
             'body': json.dumps('Error processing update')
         }
 
