@@ -138,7 +138,6 @@ async def process_receipt_with_ai(image_stream: io.BytesIO, participants_info: s
         Analyze this receipt image and calculate the bill split based on the following orders:
         {participants_info}
         Pay attention to quantities and prices. Be careful, some items can be shared between people.
-        Provide the final split per person clearly.
         """
         # Make sure generate_content_async is the correct method name for your version
         response = await model.generate_content_async([prompt, image])
@@ -186,8 +185,15 @@ def webhook(): # Changed to synchronous def
             print(f"Processing update: {update.update_id}")
             await ptb_app.process_update(update)
 
-        asyncio.run(process())
-        # --- End asyncio.run block ---
+        # --- Explicitly create and manage a new event loop ---
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(process())
+        finally:
+            # Ensure the loop is closed even if errors occur in process()
+            loop.close()
+        # --- End explicit loop management ---
 
         # Return 200 OK to Telegram
         return Response(status=200)
