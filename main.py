@@ -208,6 +208,7 @@ def lambda_handler(event, context):
     logging.info("Lambda handler invoked")
     logging.info(f"Event: {event}")
     logging.info(f"Context: {context}")
+    logging.info(f"Context: {context}")
     
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
