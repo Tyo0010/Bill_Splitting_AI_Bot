@@ -40,3 +40,4 @@ urllib3==2.4.0
 zappa
 flask
 asgiref
+uvloop
