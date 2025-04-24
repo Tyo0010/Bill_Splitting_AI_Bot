@@ -93,19 +93,28 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text("Please provide participant information in the caption!")
             return
 
+        print("Sending 'Processing...' message.")
         await message.reply_text("Processing receipt and calculating split...")
+
+        print("Getting photo file object...")
         photo_file = await photo.get_file()
+        print(f"Got photo file object: {photo_file.file_id}")
 
         # Download photo to memory (BytesIO)
+        print("Downloading photo to memory...")
         image_stream = io.BytesIO()
         await photo_file.download_to_memory(image_stream)
         image_stream.seek(0) # Reset stream position
+        print("Photo downloaded to memory.")
 
+        print("Calling process_receipt_with_ai...")
         split_result = await process_receipt_with_ai(image_stream, participants_info)
+        print("Received result from AI.")
+
         escaped_result = split_result.replace(".", r"\.") # For MarkdownV2
         if not escaped_result.strip():
             escaped_result = "Could not extract split details."
-
+        print("Sending final result message...")
         await message.reply_text(
             f"🧮 *Bill Split Results:*\n```\n{escaped_result}\n```",
             parse_mode='MarkdownV2'
