@@ -19,14 +19,16 @@ if not BOT_TOKEN:
     raise ValueError("No BOT_TOKEN set for Flask application")
 BOT_USERNAME = "@Bill_Splitting_AI_Bot" # Keep or fetch dynamically if needed
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-# WEBHOOK_URL is usually set by Telegram, not needed directly in the code here
-
+# --- Add WEBHOOK_URL ---
+WEBHOOK_URL = os.getenv("WEBHOOK_URL") # e.g., https://your-api-gateway-id.execute-api.region.amazonaws.com/main
+logger = logging.getLogger(__name__)
+if not WEBHOOK_URL:
+    logger.warning("WEBHOOK_URL not set. /setwebhook route will not function correctly.")
 # --- Logging Setup ---
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-logger = logging.getLogger(__name__)
 
 # --- Gemini AI Setup ---
 if GEMINI_API_KEY:
@@ -127,10 +129,6 @@ async def process_receipt_with_ai(image_path: str, participants_info: str) -> st
         Analyze this receipt image and calculate the bill split based on the following orders:
         {participants_info}
         Pay attention to quantities and prices. Be careful, some items can be shared between people.
-        Return only the final split results per person in a clear, itemized format.
-        Example:
-        Alice owes: $XX.XX (burger $Y.YY, coke $Z.ZZ)
-        Bob owes: $AA.AA (pasta $B.BB, salad $C.CC)
         """
         response = await model.generate_content_async([prompt, image]) # Use async version if available/preferred
         return response.text.strip()
@@ -188,6 +186,37 @@ async def webhook():
     except Exception as e:
         logger.error(f"Error processing update in webhook: {e}", exc_info=True)
         return Response("Error processing update", status=500)
+
+# --- Add /setwebhook route from template concept ---
+@app.route('/setwebhook', methods=['GET', 'POST'])
+async def set_telegram_webhook():
+    """Sets the Telegram webhook URL."""
+    if not WEBHOOK_URL:
+        return "Webhook URL not configured in environment variables.", 500
+
+    # Construct the full webhook URL Telegram should POST to
+    full_webhook_url = f"{WEBHOOK_URL.rstrip('/')}/webhook" # Append your webhook path
+    logger.info(f"Attempting to set webhook to: {full_webhook_url}")
+
+    try:
+        # Initialize app to ensure bot object is ready
+        await ptb_app.initialize()
+        if not ptb_app.bot:
+             logger.error("PTB application bot instance is None for set_webhook.")
+             return Response("Bot initialization failed", status=500)
+
+        await ptb_app.bot.set_webhook(full_webhook_url)
+        logger.info(f"Webhook successfully set to {full_webhook_url}")
+        return f"Webhook successfully set to {full_webhook_url}", 200
+    except Exception as e:
+        logger.error(f"Failed to set webhook: {e}", exc_info=True)
+        return f"Failed to set webhook: {e}", 500
+
+# --- Add index route from template concept ---
+@app.route('/', methods=['GET'])
+def index():
+    """Basic index route for health check or verification."""
+    return "Flask server is running.", 200
 
 # --- Remove the old lambda_handler and main() polling logic ---
 
