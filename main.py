@@ -26,7 +26,7 @@ model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO # Use INFO level for production
+    level=print # Use INFO level for production
 )
 logger = logging.getLogger(__name__)
 
@@ -208,10 +208,10 @@ async def lambda_handler_async(event, context, application: Application):
 # --- Wrapper for Lambda runtime ---
 def lambda_handler(event, context):
     print("--------------------------------------")
-    logging.info("Lambda handler invoked")
-    logging.info(f"Event: {event}")
-    logging.info(f"Context: {context}")
-    logging.info(f"Context: {context}")
+    print("Lambda handler invoked")
+    print(f"Event: {event}")
+    print(f"Context: {context}")
+    print(f"Context: {context}")
     
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
