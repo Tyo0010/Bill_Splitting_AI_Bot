@@ -1,35 +1,43 @@
 import os
 import logging
-# from dotenv import load_dotenv # No longer needed for Lambda
 import google.generativeai as genai
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, TypeHandler
 from PIL import Image
 import asyncio
-import json # Import json
-import base64 # <--- Import base64
-import binascii # <--- Import binascii for error handling
+import json
+import base64
+import binascii
+from flask import Flask, request, Response # Import Flask components
 
-# Load environment variables from .env file
-# load_dotenv()
-
-# Update constants
+# --- Environment Variables & Constants ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-BOT_USERNAME = "@Bill_Splitting_AI_Bot"
+if not BOT_TOKEN:
+    raise ValueError("No BOT_TOKEN set for Flask application")
+BOT_USERNAME = "@Bill_Splitting_AI_Bot" # Keep or fetch dynamically if needed
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-# Add a variable for the webhook URL (set in Lambda env vars)
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+# WEBHOOK_URL is usually set by Telegram, not needed directly in the code here
 
-# Initialize Gemini client with updated model
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
-
+# --- Logging Setup ---
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO # Use INFO level for production
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# --- Gemini AI Setup ---
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
+else:
+    logger.warning("GEMINI_API_KEY not found. AI processing will fail.")
+    model = None # Handle cases where the model might not be available
+
+# --- Telegram Bot Setup ---
+# Initialize the Application outside the request context for efficiency
+ptb_app = Application.builder().token(BOT_TOKEN).build()
+
+# --- Bot Command Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Hi! Add me to a group, then tag me ({BOT_USERNAME}) in a message with a receipt photo to split the bill.")
 
@@ -51,210 +59,137 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - This message"
     )
 
+# --- Receipt Handling Logic ---
 async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
-# Handle cases where there might not be a photo (e.g., text message)
     if not message or not message.photo:
-         print("Received update without message or photo.")
-         return
+        logger.info("Received update without message or photo.")
+        # Optionally reply if it's a direct message or mention without photo
+        # await message.reply_text("Please send a photo with a caption.")
+        return
 
     photo = message.photo[-1]
     caption = message.caption or ""
     downloaded_path = None
-    
-    if BOT_USERNAME not in caption:
-        print(f"Bot username {BOT_USERNAME} not found in caption: '{caption}'. Ignoring message.")
-        return # Exit if the bot wasn't mentioned
 
-    
+    if BOT_USERNAME not in caption:
+        logger.info(f"Bot username {BOT_USERNAME} not found in caption: '{caption}'. Ignoring.")
+        return
+
+    if not model:
+         await message.reply_text("AI Model is not configured. Cannot process receipt.")
+         return
+
     try:
-        # Extract participants info from caption
         participants_info = caption.replace(BOT_USERNAME, "").strip()
-        
         if not participants_info:
             await message.reply_text("Please provide participant information in the caption!")
             return
 
-        # Download photo
+        await message.reply_text("Processing receipt and calculating split...")
         photo_file = await photo.get_file()
+        # Note: download_to_drive might not work reliably in Lambda's ephemeral storage.
+        # Consider downloading to memory (BytesIO) if issues arise.
         downloaded_path = await photo_file.download_to_drive()
 
+        split_result = await process_receipt_with_ai(downloaded_path, participants_info)
+        escaped_result = split_result.replace(".", r"\.") # For MarkdownV2
+        if not escaped_result.strip():
+            escaped_result = "Could not extract split details."
 
-        # Process with AI
-        await message.reply_text("Processing receipt and calculating split...")
-        try:
-            split_result = await process_receipt_with_ai(downloaded_path, participants_info)
-            # Fix escape sequence
-            escaped_result = split_result.replace(".", r"\.")
-            # Ensure result is not empty
-            if not escaped_result.strip():
-                escaped_result = "Could not extract split details."
-
-            await message.reply_text(
-                f"🧮 *Bill Split Results:*\n```\n{escaped_result}\n```",
-                parse_mode='MarkdownV2'
-            )
-        except Exception as api_error:
-            logger.error(f"API Error: {str(api_error)}", exc_info=True)
-            await message.reply_text(
-                "Sorry, there was an error processing the receipt. Please try again."
-            )
+        await message.reply_text(
+            f"🧮 *Bill Split Results:*\n```\n{escaped_result}\n```",
+            parse_mode='MarkdownV2'
+        )
 
     except Exception as e:
         logger.error(f"Error in handle_receipt: {str(e)}", exc_info=True)
         await message.reply_text(
-            "Sorry, an error occurred. Please make sure:\n"
-            "1. The image is clear and readable\n"
-            "2. The caption format is correct\n"
-            "3. Try again or contact support if the issue persists"
+            "Sorry, an error occurred processing the receipt. Please check the image and caption format."
         )
     finally:
-        # Cleanup downloaded file
         if downloaded_path and os.path.exists(downloaded_path):
             try:
                 os.remove(downloaded_path)
-                print(f"Cleaned up temporary file: {downloaded_path}")
+                logger.info(f"Cleaned up temporary file: {downloaded_path}")
             except Exception as cleanup_error:
                 logger.error(f"Error cleaning up file: {cleanup_error}")
 
 async def process_receipt_with_ai(image_path: str, participants_info: str) -> str:
+    if not model:
+        raise ValueError("Gemini AI model not initialized.")
     try:
-        # Load and process image
         image = Image.open(image_path)
-        
-        # Prepare prompt with more specific instructions
         prompt = f"""
         Analyze this receipt image and calculate the bill split based on the following orders:
         {participants_info}
-        pay attention to quantities and prices. Be careful, some items can be shared between people. Return only final split results
+        Pay attention to quantities and prices. Be careful, some items can be shared between people.
+        Return only the final split results per person in a clear, itemized format.
+        Example:
+        Alice owes: $XX.XX (burger $Y.YY, coke $Z.ZZ)
+        Bob owes: $AA.AA (pasta $B.BB, salad $C.CC)
         """
-
-        response = model.generate_content(
-            [prompt, image],
-        )
-
+        response = await model.generate_content_async([prompt, image]) # Use async version if available/preferred
         return response.text.strip()
-
     except Exception as e:
         logger.error(f"Error in process_receipt_with_ai: {str(e)}", exc_info=True)
-        raise # Re-raise the exception to be caught in handle_receipt
+        raise
+
+# --- Register Handlers with PTB Application ---
+ptb_app.add_handler(CommandHandler("start", start))
+ptb_app.add_handler(CommandHandler("help", help_command))
+# Use MessageHandler to specifically catch photos with captions mentioning the bot
+ptb_app.add_handler(MessageHandler(
+    filters.PHOTO & filters.CaptionRegex(BOT_USERNAME) & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP),
+    handle_receipt
+))
+# Optional: Add a handler for private chats if needed
+# ptb_app.add_handler(MessageHandler(filters.PHOTO & filters.CaptionRegex(BOT_USERNAME) & filters.ChatType.PRIVATE, handle_receipt))
 
 
-# --- Initialize the application (outside the handler) ---
+# --- Flask Application ---
+app = Flask(__name__)
 
+@app.route('/webhook', methods=['POST'])
+async def webhook():
+    """Webhook endpoint to receive updates from Telegram."""
+    logger.info("Webhook received a request.")
+    if request.content_type != 'application/json':
+        logger.warning(f"Invalid content type: {request.content_type}")
+        return Response(status=403) # Forbidden
 
-
-# --- Lambda Handler Function ---
-async def lambda_handler_async(event, context, application: Application):
-    """Processes the incoming Telegram update from the Lambda event."""
     try:
-        # --- Handle non-POST requests early ---
-        http_method = event.get('httpMethod', 'POST') # Default to POST if not present
-        if http_method != 'POST':
-            logger.info(f"Received non-POST request ({http_method}). Ignoring.")
-            return {'statusCode': 200, 'body': json.dumps(f'Ignoring {http_method} request.')}
+        update_data = request.get_json(force=True)
+        logger.debug(f"Received update data: {update_data}")
 
-        # Check if the body is base64 encoded
-        is_base64 = event.get("isBase64Encoded", False)
-        body_str = event.get("body", "{}")
-        # Log only the beginning of the raw body for brevity and security
-        print(f"Received raw body (isBase64Encoded={is_base64}): {body_str[:100]}...")
+        # Ensure the application is initialized (usually done above)
+        await ptb_app.initialize()
+        if not ptb_app.bot:
+             logger.error("PTB application bot instance is None.")
+             return Response("Bot initialization failed", status=500)
 
-        if is_base64:
-            try:
-                # Decode the base64 string
-                decoded_bytes = base64.b64decode(body_str)
-                # Decode bytes to UTF-8 string
-                body_str = decoded_bytes.decode('utf-8')
-                print(f"Decoded body string: {body_str}")
-            except (binascii.Error, UnicodeDecodeError) as decode_error:
-                # Log the specific decoding error
-                logger.error(f"Error decoding base64 body: {decode_error} - Raw body started with: {event.get('body', '{}')[:100]}...", exc_info=True)
-                return {'statusCode': 400, 'body': json.dumps('Invalid base64 encoding')}
+        update = Update.de_json(update_data, ptb_app.bot)
+        logger.info(f"Processing update: {update.update_id}")
 
-        # --- Check for empty body after potential decoding ---
-        if not body_str or body_str.strip() == '{}':
-             logger.warning(f"Received POST request with empty or null body. Body: '{body_str}'. Ignoring.")
-             return {'statusCode': 200, 'body': json.dumps('Empty body received.')}
+        # Process the update using the PTB application's handlers
+        await ptb_app.process_update(update)
 
-        # --- Add logging for the string before JSON parsing ---
-        print(f"Body string before JSON parsing: {body_str}")
-        # --- End logging ---
-        # Parse the JSON string body into a Python dictionary
-        update_data = json.loads(body_str)
-        # --- Check if update_id is present after parsing ---
-        if 'update_id' not in update_data:
-            logger.error(f"Parsed data is missing 'update_id'. Data: {update_data}")
-            return {'statusCode': 400, 'body': json.dumps('Invalid Telegram update: missing update_id')}
-        print(f"Parsed update data (type: {type(update_data)}): {update_data}") # Log type and content
-
-        # Create an Update object from the dictionary
-        # Ensure the application is initialized and bot is available
-        await application.initialize()
-        if not application.bot:
-             logger.error("Application bot instance is None after initialization.")
-             # Return an error if the bot object isn't ready
-             return {'statusCode': 500, 'body': json.dumps('Bot initialization failed')}
-
-        print(Update)
-        update = Update.de_json(update_data, application.bot)
-        print(f"Processing update: {update.update_id}")
-
-        # Process the update using the application's handlers
-        await application.process_update(update)
-
-        # Return a 200 OK response to Telegram/API Gateway
-        return {
-            'statusCode': 200,
-            'body': json.dumps('Update processed successfully')
-        }
+        # Return 200 OK to Telegram
+        return Response(status=200)
 
     except json.JSONDecodeError as e:
-        # Log if JSON parsing fails *after* potential decoding
-        logger.error(f"Error decoding JSON: {e} - Body after potential decode was: {body_str}", exc_info=True)
-        return {'statusCode': 400, 'body': json.dumps('Invalid JSON received')}
+        logger.error(f"Error decoding JSON: {e}", exc_info=True)
+        return Response("Invalid JSON received", status=400)
     except Exception as e:
-        logger.error(f"Error processing update in lambda_handler_async: {e}", exc_info=True)
-        # Return 500 for other unexpected errors during processing
-        return {
-            'statusCode': 500,
-            'body': json.dumps('Error processing update')
-        }
+        logger.error(f"Error processing update in webhook: {e}", exc_info=True)
+        return Response("Error processing update", status=500)
 
-# --- Wrapper for Lambda runtime ---
-def lambda_handler(event, context):
-    print("--------------------------------------")
-    print("Lambda handler invoked")
-    print(f"Event: {event}")
-    print(f"Context: {context}")
-    print(f"Context: {context}")
-    
-    application = Application.builder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(TypeHandler(Update, handle_receipt)) # Simplified handler
-    
-    """Synchronous wrapper for the async handler."""
+# --- Remove the old lambda_handler and main() polling logic ---
 
-    return asyncio.run(lambda_handler_async(event, context, application))
-
-
-# --- Remove the old main() polling logic ---
-# def main() -> None:
-
-#     application = Application.builder().token(BOT_TOKEN).build()
-
-#     application.add_handler(CommandHandler("start", start))
-#     application.add_handler(CommandHandler("help", help_command))
-
-
-#     application.add_handler(MessageHandler(
-#         filters.PHOTO & (filters.COMMAND | filters.ChatType.GROUPS | filters.ChatType.PRIVATE), 
-#         handle_receipt
-#     ))
-
-#     print("Starting bot...")
-#     application.run_polling(allowed_updates=Update.ALL_TYPES)
-
+# Optional: Add for local development testing (not used by Zappa)
 # if __name__ == '__main__':
-#     main()
+#     # Note: Running locally this way won't receive webhooks unless you use ngrok or similar
+#     # and manually set the webhook URL with Telegram.
+#     # It's primarily for syntax checking or testing specific functions.
+#     # For full local testing, consider running PTB's polling mode temporarily.
+#     app.run(debug=True, port=5000)
