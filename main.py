@@ -55,7 +55,7 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
 # Handle cases where there might not be a photo (e.g., text message)
     if not message or not message.photo:
-         logger.debug("Received update without message or photo.")
+         print("Received update without message or photo.")
          return
 
     photo = message.photo[-1]
@@ -63,7 +63,7 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     downloaded_path = None
     
     if BOT_USERNAME not in caption:
-        logger.debug(f"Bot username {BOT_USERNAME} not found in caption: '{caption}'. Ignoring message.")
+        print(f"Bot username {BOT_USERNAME} not found in caption: '{caption}'. Ignoring message.")
         return # Exit if the bot wasn't mentioned
 
     
@@ -113,7 +113,7 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if downloaded_path and os.path.exists(downloaded_path):
             try:
                 os.remove(downloaded_path)
-                logger.debug(f"Cleaned up temporary file: {downloaded_path}")
+                print(f"Cleaned up temporary file: {downloaded_path}")
             except Exception as cleanup_error:
                 logger.error(f"Error cleaning up file: {cleanup_error}")
 
@@ -152,7 +152,7 @@ async def lambda_handler_async(event, context, application: Application):
         is_base64 = event.get("isBase64Encoded", False)
         body_str = event.get("body", "{}")
         # Log only the beginning of the raw body for brevity and security
-        logger.debug(f"Received raw body (isBase64Encoded={is_base64}): {body_str[:100]}...")
+        print(f"Received raw body (isBase64Encoded={is_base64}): {body_str[:100]}...")
 
         if is_base64:
             try:
@@ -160,18 +160,18 @@ async def lambda_handler_async(event, context, application: Application):
                 decoded_bytes = base64.b64decode(body_str)
                 # Decode bytes to UTF-8 string
                 body_str = decoded_bytes.decode('utf-8')
-                logger.debug(f"Decoded body string: {body_str}")
+                print(f"Decoded body string: {body_str}")
             except (binascii.Error, UnicodeDecodeError) as decode_error:
                 # Log the specific decoding error
                 logger.error(f"Error decoding base64 body: {decode_error} - Raw body started with: {event.get('body', '{}')[:100]}...", exc_info=True)
                 return {'statusCode': 400, 'body': json.dumps('Invalid base64 encoding')}
 
         # --- Add logging for the string before JSON parsing ---
-        logger.debug(f"Body string before JSON parsing: {body_str}")
+        print(f"Body string before JSON parsing: {body_str}")
         # --- End logging ---
         # Parse the JSON string body into a Python dictionary
         update_data = json.loads(body_str)
-        logger.debug(f"Parsed update data (type: {type(update_data)}): {update_data}") # Log type and content
+        print(f"Parsed update data (type: {type(update_data)}): {update_data}") # Log type and content
 
         # Create an Update object from the dictionary
         # Ensure the application is initialized and bot is available
