@@ -138,6 +138,7 @@ async def process_receipt_with_ai(image_stream: io.BytesIO, participants_info: s
         Analyze this receipt image and calculate the bill split based on the following orders:
         {participants_info}
         Pay attention to quantities and prices. Be careful, some items can be shared between people.
+        Return only final split results
         """
         # Make sure generate_content_async is the correct method name for your version
         response = await model.generate_content_async([prompt, image])
@@ -187,9 +188,9 @@ def webhook(): # Changed to synchronous def
 
         # --- Explicitly create and manage a new event loop ---
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # asyncio.set_event_loop(loop) # <-- Remove this line
         try:
-            loop.run_until_complete(process())
+            loop.run_until_complete(process()) # Run directly on the loop object
         finally:
             # Ensure the loop is closed even if errors occur in process()
             loop.close()
