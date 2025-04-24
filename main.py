@@ -260,6 +260,11 @@ async def lambda_handler_async(event, context):
 
 # --- Wrapper for Lambda runtime ---
 def lambda_handler(event, context):
+    print("--------------------------------------")
+    logging.info("Lambda handler invoked")
+    logging.info(f"Event: {event}")
+    logging.info(f"Context: {context}")
+    
     """Synchronous wrapper for the async handler."""
     # Use asyncio.run() in Python 3.7+ for cleaner event loop management
     return asyncio.run(lambda_handler_async(event, context))
