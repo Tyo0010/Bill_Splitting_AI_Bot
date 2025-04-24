@@ -26,7 +26,7 @@ model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=print # Use INFO level for production
+    level=logging.INFO # Use INFO level for production
 )
 logger = logging.getLogger(__name__)
 
@@ -148,6 +148,12 @@ async def process_receipt_with_ai(image_path: str, participants_info: str) -> st
 async def lambda_handler_async(event, context, application: Application):
     """Processes the incoming Telegram update from the Lambda event."""
     try:
+        # --- Handle non-POST requests early ---
+        http_method = event.get('httpMethod', 'POST') # Default to POST if not present
+        if http_method != 'POST':
+            logger.info(f"Received non-POST request ({http_method}). Ignoring.")
+            return {'statusCode': 200, 'body': json.dumps(f'Ignoring {http_method} request.')}
+
         # Check if the body is base64 encoded
         is_base64 = event.get("isBase64Encoded", False)
         body_str = event.get("body", "{}")
@@ -166,11 +172,20 @@ async def lambda_handler_async(event, context, application: Application):
                 logger.error(f"Error decoding base64 body: {decode_error} - Raw body started with: {event.get('body', '{}')[:100]}...", exc_info=True)
                 return {'statusCode': 400, 'body': json.dumps('Invalid base64 encoding')}
 
+        # --- Check for empty body after potential decoding ---
+        if not body_str or body_str.strip() == '{}':
+             logger.warning(f"Received POST request with empty or null body. Body: '{body_str}'. Ignoring.")
+             return {'statusCode': 200, 'body': json.dumps('Empty body received.')}
+
         # --- Add logging for the string before JSON parsing ---
         print(f"Body string before JSON parsing: {body_str}")
         # --- End logging ---
         # Parse the JSON string body into a Python dictionary
         update_data = json.loads(body_str)
+        # --- Check if update_id is present after parsing ---
+        if 'update_id' not in update_data:
+            logger.error(f"Parsed data is missing 'update_id'. Data: {update_data}")
+            return {'statusCode': 400, 'body': json.dumps('Invalid Telegram update: missing update_id')}
         print(f"Parsed update data (type: {type(update_data)}): {update_data}") # Log type and content
 
         # Create an Update object from the dictionary
@@ -181,7 +196,7 @@ async def lambda_handler_async(event, context, application: Application):
              # Return an error if the bot object isn't ready
              return {'statusCode': 500, 'body': json.dumps('Bot initialization failed')}
 
-        print(Update.de_json(update_data, application.bot))
+        print(Update)
         update = Update.de_json(update_data, application.bot)
         print(f"Processing update: {update.update_id}")
 
