@@ -181,8 +181,9 @@ async def lambda_handler_async(event, context, application: Application):
              # Return an error if the bot object isn't ready
              return {'statusCode': 500, 'body': json.dumps('Bot initialization failed')}
 
+        print(Update.de_json(update_data, application.bot))
         update = Update.de_json(update_data, application.bot)
-        logger.info(f"Processing update: {update.update_id}")
+        print(f"Processing update: {update.update_id}")
 
         # Process the update using the application's handlers
         await application.process_update(update)
@@ -237,7 +238,7 @@ def lambda_handler(event, context):
 #         handle_receipt
 #     ))
 
-#     logger.info("Starting bot...")
+#     print("Starting bot...")
 #     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 # if __name__ == '__main__':
