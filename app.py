@@ -167,13 +167,8 @@ def webhook(): # Changed to synchronous def
 
         # --- Use asyncio.run to handle the async PTB processing ---
         async def process():
-            # Ensure bot object is ready (PTB usually initializes lazily if needed)
-            # await ptb_app.initialize() # Removed explicit initialize
-            if not ptb_app.bot: # Check if bot object exists after potential lazy init
-                 await ptb_app.initialize() # Try explicit init if still None
-                 if not ptb_app.bot:
-                     logger.error("PTB application bot instance is None even after initialize().")
-                     raise RuntimeError("Bot initialization failed") # Raise error to be caught below
+            # Ensure the application is initialized before processing
+            await ptb_app.initialize()
 
             update = Update.de_json(update_data, ptb_app.bot)
             print(f"Processing update: {update.update_id}")
@@ -194,8 +189,8 @@ def webhook(): # Changed to synchronous def
 
 # --- Add /setwebhook route from template concept ---
 @app.route('/setwebhook', methods=['GET', 'POST'])
-async def set_telegram_webhook():
-    """Sets the Telegram webhook URL."""
+def set_telegram_webhook(): # Changed to synchronous def
+    """Sets the Telegram webhook URL. Uses asyncio.run for PTB."""
     if not WEBHOOK_URL:
         return "Webhook URL not configured in environment variables.", 500
 
@@ -203,17 +198,29 @@ async def set_telegram_webhook():
     full_webhook_url = f"{WEBHOOK_URL.rstrip('/')}/webhook" # Append your webhook path
     print(f"Attempting to set webhook to: {full_webhook_url}")
 
-    try:
-        # Initialize app to ensure bot object is ready
-        await ptb_app.initialize()
-        if not ptb_app.bot:
-             logger.error("PTB application bot instance is None for set_webhook.")
-             return Response("Bot initialization failed", status=500)
+    # --- Use asyncio.run to handle the async PTB call ---
+    async def set_hook():
+        try:
+            # Initialize app to ensure bot object is ready
+            await ptb_app.initialize()
+            if not ptb_app.bot:
+                 logger.error("PTB application bot instance is None for set_webhook.")
+                 raise RuntimeError("Bot initialization failed")
 
-        await ptb_app.bot.set_webhook(full_webhook_url)
-        print(f"Webhook successfully set to {full_webhook_url}")
-        return f"Webhook successfully set to {full_webhook_url}", 200
+            await ptb_app.bot.set_webhook(full_webhook_url)
+            print(f"Webhook successfully set to {full_webhook_url}")
+            return f"Webhook successfully set to {full_webhook_url}", 200
+        except Exception as e:
+            logger.error(f"Failed to set webhook inside set_hook: {e}", exc_info=True)
+            # Re-raise or return an error indication if needed,
+            # but the outer try/except will catch it if raised.
+            raise # Re-raise the exception to be caught below
+
+    try:
+        result, status_code = asyncio.run(set_hook())
+        return result, status_code
     except Exception as e:
+        # Log the final error caught from asyncio.run
         logger.error(f"Failed to set webhook: {e}", exc_info=True)
         return f"Failed to set webhook: {e}", 500
 
