@@ -154,8 +154,8 @@ ptb_app.add_handler(MessageHandler(
     handle_receipt
 ))
 @app.route('/webhook', methods=['POST'])
-async def webhook():
-    """Webhook endpoint to receive updates from Telegram."""
+def webhook(): # Changed to synchronous def
+    """Webhook endpoint to receive updates from Telegram. Uses asyncio.run for PTB."""
     print("Webhook received a request.")
     if request.content_type != 'application/json':
         logger.warning(f"Invalid content type: {request.content_type}")
@@ -165,17 +165,22 @@ async def webhook():
         update_data = request.get_json(force=True)
         print(f"Received update data: {update_data}")
 
-        # Ensure the application is initialized (usually done above)
-        await ptb_app.initialize()
-        if not ptb_app.bot:
-             logger.error("PTB application bot instance is None.")
-             return Response("Bot initialization failed", status=500)
+        # --- Use asyncio.run to handle the async PTB processing ---
+        async def process():
+            # Ensure bot object is ready (PTB usually initializes lazily if needed)
+            # await ptb_app.initialize() # Removed explicit initialize
+            if not ptb_app.bot: # Check if bot object exists after potential lazy init
+                 await ptb_app.initialize() # Try explicit init if still None
+                 if not ptb_app.bot:
+                     logger.error("PTB application bot instance is None even after initialize().")
+                     raise RuntimeError("Bot initialization failed") # Raise error to be caught below
 
-        update = Update.de_json(update_data, ptb_app.bot)
-        print(f"Processing update: {update.update_id}")
+            update = Update.de_json(update_data, ptb_app.bot)
+            print(f"Processing update: {update.update_id}")
+            await ptb_app.process_update(update)
 
-        # Process the update using the PTB application's handlers
-        await ptb_app.process_update(update)
+        asyncio.run(process())
+        # --- End asyncio.run block ---
 
         # Return 200 OK to Telegram
         return Response(status=200)
