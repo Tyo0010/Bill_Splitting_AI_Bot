@@ -189,8 +189,8 @@ def webhook(): # Changed to synchronous def
 
         # --- Use asyncio.run to handle the async PTB processing ---
         async def process():
-            # Ensure the application is initialized before processing
-            await ptb_app.initialize()
+            # Let PTB handle initialization lazily if needed
+            # await ptb_app.initialize() # Removed explicit initialize again
 
             update = Update.de_json(update_data, ptb_app.bot)
             print(f"Processing update: {update.update_id}")
