@@ -1,3 +1,13 @@
+import asyncio
+# --- Try setting uvloop policy ---
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    print("Using uvloop event loop policy.")
+except ImportError:
+    print("uvloop not found, using default asyncio event loop policy.")
+# --- End uvloop policy setting ---
+
 import os
 import logging
 import google.generativeai as genai
@@ -5,7 +15,7 @@ from telegram import Update
 # Import Bot separately if needed in set_webhook
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, TypeHandler
 from PIL import Image
-import asyncio
+# import asyncio # Already imported above
 import json
 import io # <--- Add this import
 import base64
