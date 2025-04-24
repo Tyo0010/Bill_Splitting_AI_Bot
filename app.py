@@ -68,7 +68,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.photo:
-        logger.info("Received update without message or photo.")
+        print("Received update without message or photo.")
         # Optionally reply if it's a direct message or mention without photo
         # await message.reply_text("Please send a photo with a caption.")
         return
@@ -78,7 +78,7 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     downloaded_path = None
 
     if BOT_USERNAME not in caption:
-        logger.info(f"Bot username {BOT_USERNAME} not found in caption: '{caption}'. Ignoring.")
+        print(f"Bot username {BOT_USERNAME} not found in caption: '{caption}'. Ignoring.")
         return
 
     if not model:
@@ -116,7 +116,7 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if downloaded_path and os.path.exists(downloaded_path):
             try:
                 os.remove(downloaded_path)
-                logger.info(f"Cleaned up temporary file: {downloaded_path}")
+                print(f"Cleaned up temporary file: {downloaded_path}")
             except Exception as cleanup_error:
                 logger.error(f"Error cleaning up file: {cleanup_error}")
 
@@ -156,14 +156,14 @@ ptb_app.add_handler(MessageHandler(
 @app.route('/webhook', methods=['POST'])
 async def webhook():
     """Webhook endpoint to receive updates from Telegram."""
-    logger.info("Webhook received a request.")
+    print("Webhook received a request.")
     if request.content_type != 'application/json':
         logger.warning(f"Invalid content type: {request.content_type}")
         return Response(status=403) # Forbidden
 
     try:
         update_data = request.get_json(force=True)
-        logger.debug(f"Received update data: {update_data}")
+        print(f"Received update data: {update_data}")
 
         # Ensure the application is initialized (usually done above)
         await ptb_app.initialize()
@@ -172,7 +172,7 @@ async def webhook():
              return Response("Bot initialization failed", status=500)
 
         update = Update.de_json(update_data, ptb_app.bot)
-        logger.info(f"Processing update: {update.update_id}")
+        print(f"Processing update: {update.update_id}")
 
         # Process the update using the PTB application's handlers
         await ptb_app.process_update(update)
@@ -196,7 +196,7 @@ async def set_telegram_webhook():
 
     # Construct the full webhook URL Telegram should POST to
     full_webhook_url = f"{WEBHOOK_URL.rstrip('/')}/webhook" # Append your webhook path
-    logger.info(f"Attempting to set webhook to: {full_webhook_url}")
+    print(f"Attempting to set webhook to: {full_webhook_url}")
 
     try:
         # Initialize app to ensure bot object is ready
@@ -206,7 +206,7 @@ async def set_telegram_webhook():
              return Response("Bot initialization failed", status=500)
 
         await ptb_app.bot.set_webhook(full_webhook_url)
-        logger.info(f"Webhook successfully set to {full_webhook_url}")
+        print(f"Webhook successfully set to {full_webhook_url}")
         return f"Webhook successfully set to {full_webhook_url}", 200
     except Exception as e:
         logger.error(f"Failed to set webhook: {e}", exc_info=True)
