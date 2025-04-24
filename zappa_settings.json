@@ -1,22 +1,21 @@
 {
-    "main": { 
-        "app_function": "main.lambda_handler",
-        "project_name": "bill-splitting-bot",
-        "runtime": "python3.11",
-        "s3_bucket": "zappa-bill-splitter-unique-bucket",
-        "aws_region": "ap-southeast-1",
-        "timeout_seconds": 60, 
-        "memory_size": 256,   
-        "keep_warm": false,
-         "exclude": [
-            "*.pyc",
-            "__pycache__",
-            ".git",
-            "tests",
-            "*.log",
-            "venv",
-            "*.DS_Store"
-        ]
-        
-    }
+  "main": {
+    "app_function": "app.app",
+    "project_name": "bill-splitting-bot",
+    "runtime": "python3.11",
+    "s3_bucket": "zappa-bill-splitter-unique-bucket",
+    "aws_region": "ap-southeast-1",
+    "timeout_seconds": 60,
+    "memory_size": 256,
+    "keep_warm": false,
+    "exclude": [
+      "*.pyc",
+      "__pycache__",
+      ".git",
+      "tests",
+      "*.log",
+      "venv",
+      "*.DS_Store"
+    ]
+  }
 }
